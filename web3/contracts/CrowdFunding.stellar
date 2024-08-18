@@ -1,0 +1,138 @@
+#![no_std]
+
+use soroban_sdk::{contractimpl, symbol_short, Address, Env, IntoVal, Symbol, Vec};
+use soroban_sdk::serde::{Serialize, Deserialize};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Campaign {
+    owner: Address,
+    title: String,
+    description: String,
+    target: i128,
+    deadline: u64,
+    amount_collected: i128,
+    image: String,
+    donators: Vec<Address>,
+    donations: Vec<i128>,
+}
+
+#[derive(Clone)]
+pub struct CrowdFundingContract;
+
+#[contractimpl]
+impl CrowdFundingContract {
+    pub fn init(env: Env) -> Self {
+        env.storage().set(symbol_short!("number_of_campaigns"), &0u32);
+        Self
+    }
+
+    pub fn create_campaign(
+        env: Env,
+        owner: Address,
+        title: String,
+        description: String,
+        target: i128,
+        deadline: u64,
+        image: String,
+    ) -> u32 {
+        let now = env.ledger().timestamp();
+        assert!(deadline > now, "The deadline should be a date in the future.");
+
+        let mut number_of_campaigns: u32 = env.storage().get(symbol_short!("number_of_campaigns")).unwrap_or(0);
+        let campaign = Campaign {
+            owner,
+            title,
+            description,
+            target,
+            deadline,
+            amount_collected: 0,
+            image,
+            donators: Vec::new(&env),
+            donations: Vec::new(&env),
+        };
+
+        env.storage().set((&symbol_short!("campaign"), number_of_campaigns).into_val(&env), &campaign);
+        number_of_campaigns += 1;
+        env.storage().set(symbol_short!("number_of_campaigns"), &number_of_campaigns);
+
+        number_of_campaigns - 1
+    }
+
+    pub fn donate_to_campaign(env: Env, id: u32, donor: Address, amount: i128) {
+        let mut campaign: Campaign = env.storage().get((&symbol_short!("campaign"), id).into_val(&env)).unwrap();
+        let now = env.ledger().timestamp();
+        assert!(campaign.owner != donor, "Owner can't donate to their own campaign");
+        assert!(campaign.deadline > now, "The deadline has passed");
+        assert!(campaign.amount_collected < campaign.target, "Target amount already reached");
+
+        campaign.donators.push(donor.clone());
+        campaign.donations.push(amount);
+
+        env.storage().set((&symbol_short!("campaign"), id).into_val(&env), &campaign);
+
+        // Send the amount to the campaign owner
+        let payment_sym = Symbol::short("pay");
+        env.invoke_contract(
+            &donor,
+            payment_sym,
+            (&campaign.owner, amount).into_val(&env),
+        );
+
+        campaign.amount_collected += amount;
+        env.storage().set((&symbol_short!("campaign"), id).into_val(&env), &campaign);
+    }
+
+    pub fn get_donators(env: Env, id: u32) -> (Vec<Address>, Vec<i128>) {
+        let campaign: Campaign = env.storage().get((&symbol_short!("campaign"), id).into_val(&env)).unwrap();
+        (campaign.donators, campaign.donations)
+    }
+
+    pub fn get_campaigns(env: Env) -> Vec<Campaign> {
+        let number_of_campaigns: u32 = env.storage().get(symbol_short!("number_of_campaigns")).unwrap_or(0);
+        let mut all_campaigns = Vec::new(&env);
+        for i in 0..number_of_campaigns {
+            let campaign: Campaign = env.storage().get((&symbol_short!("campaign"), i).into_val(&env)).unwrap();
+            all_campaigns.push(campaign);
+        }
+        all_campaigns
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::Env as TestEnv;
+    use soroban_sdk::Symbol;
+
+    #[test]
+    fn test_crowdfunding() {
+        let env = TestEnv::default();
+        let contract = CrowdFundingContract::init(env.clone());
+
+        let owner = Address::random(&env);
+        let donor = Address::random(&env);
+
+        // Create a campaign
+        let campaign_id = contract.create_campaign(
+            env.clone(),
+            owner.clone(),
+            String::from_slice(&env, "Test Campaign"),
+            String::from_slice(&env, "Description"),
+            1_000_000_000,
+            env.ledger().timestamp() + 100_000,
+            String::from_slice(&env, "image_url"),
+        );
+
+        // Donate to the campaign
+        contract.donate_to_campaign(env.clone(), campaign_id, donor.clone(), 100_000);
+
+        // Check the donators
+        let (donators, donations) = contract.get_donators(env.clone(), campaign_id);
+        assert_eq!(donators.len(), 1);
+        assert_eq!(donations.len(), 1);
+
+        // Check the campaigns
+        let campaigns = contract.get_campaigns(env);
+        assert_eq!(campaigns.len(), 1);
+    }
+}

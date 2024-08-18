@@ -1,0 +1,21 @@
+{
+  "name": "stellar-javascript-starter",
+  "version": "1.0.0",
+  "description": "A starter project for Stellar using JavaScript",
+  "main": "index.js",
+  "scripts": {
+    "start": "node web3/index.js",
+    "build": "echo 'Build script not specified'",
+    "deploy": "echo 'Deploy script not specified'",
+    "release": "echo 'Release script not specified'"
+  },
+  "dependencies": {
+    "stellar-sdk": "^8.2.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.6"
+  },
+  "author": "",
+  "license": "ISC"
+}
