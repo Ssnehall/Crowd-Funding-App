@@ -2,7 +2,6 @@
 
 This decentralized application (DApp) is a crowdfunding platform built upon the Hedera testnet network. It allows users to create, contribute to, and manage crowdfunding campaigns securely using blockchain technology.
 
-site Link : https://ronak-crowd-funding.vercel.app
 
 ## Features
 ### Campaign Creation: 
